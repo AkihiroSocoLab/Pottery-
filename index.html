@@ -3,14 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>陶芸エディタ — モバイル実行用デモ v0.3</title>
+<title>陶芸エディタ — 非モジュール版</title>
 <style>
   :root { --bg:#f7f7fb; --fg:#111; --muted:#6b7280; --accent:#111; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans JP",sans-serif; }
   .app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
   header { padding:12px 14px; font-weight:600; border-bottom:1px solid #e5e7eb; background:#fff; }
-  /* ← 幅と高さをきっちり与える。fallbackはJS側で再計算 */
   #scene { height:56vh; width:100%; background:linear-gradient(#fff,#f3f4f6); }
   .panel { padding:10px 12px; background:#fff; border-top:1px solid #e5e7eb; }
   .row { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; margin:8px 0; }
@@ -28,7 +27,7 @@
 </head>
 <body>
 <div class="app">
-  <header>陶芸エディタ — モバイルHTMLデモ v0.2（GLB読込＋容量/安定性）</header>
+  <header>陶芸エディタ — 非モジュール版（GLB読込＋容量/安定性）</header>
   <div id="scene"></div>
   <div class="panel">
     <div class="row">
@@ -94,18 +93,18 @@
   </div>
 </div>
 
-<script type="module">
-  // ▼ ESMはCDNのフルURLを利用
-  import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-  import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
-  import { STLExporter } from 'https://unpkg.com/three@0.160.0/examples/jsm/exporters/STLExporter.js';
-  import { DecalGeometry } from 'https://unpkg.com/three@0.160.0/examples/jsm/geometries/DecalGeometry.js';
-  import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+<!-- ▼ 非モジュール版 Three.js と examples を読み込み（順番重要） -->
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/exporters/STLExporter.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/geometries/DecalGeometry.js"></script>
+<script src="https://unpkg.com/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 
+<script>
   const el = (id)=>document.getElementById(id);
   const container = document.getElementById('scene');
 
-  // --- Three bootstrap
+  // --- Three bootstrap（グローバル THREE を使用）
   const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
   container.appendChild(renderer.domElement);
 
@@ -114,7 +113,7 @@
   camera.position.set(0.28, 0.2, 0.28);
   camera.lookAt(0,0,0);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.target.set(0,0,0);
   controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.maxDistance = 1.2; controls.minDistance = 0.08;
@@ -126,20 +125,15 @@
   const grid = new THREE.GridHelper(1, 10, 0xcccccc, 0xeeeeee);
   grid.position.y = -0.08; scene.add(grid);
 
-  // ▼ 重要：サイズ計算を“強制取得”＋fallback
   function sizeScene(){
     const w = container.clientWidth || window.innerWidth || 640;
     const h = container.clientHeight || Math.round((window.innerHeight||480)*0.56);
-    renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
-  // 初期化直後とresizeで確実に反映
-  sizeScene();
-  window.addEventListener('resize', sizeScene);
-  // レイアウト確定後にも保険で再実行
-  setTimeout(sizeScene, 0);
+  sizeScene(); window.addEventListener('resize', sizeScene); setTimeout(sizeScene, 0);
 
   // --- State
   const state = {
@@ -148,14 +142,11 @@
     wave: { amp: parseFloat(el('amp').value), freq: parseFloat(el('freq').value) },
     material: { color: el('color').value, roughness: parseFloat(el('rough').value) },
     decals: [],
-    uploadedMesh: null
+    uploadedGeom: null
   };
 
   let baseMesh = null;
-  const baseMat = new THREE.MeshStandardMaterial({
-    color: state.material.color, roughness: state.material.roughness, metalness: 0.0,
-    side: THREE.DoubleSide
-  });
+  const baseMat = new THREE.MeshStandardMaterial({ color: state.material.color, roughness: state.material.roughness, metalness:0, side: THREE.DoubleSide });
 
   function buildCup({h, rt, rb}){ return new THREE.CylinderGeometry(rt, rb, h, 192, 64, false); }
   function buildVase({h}){
@@ -229,8 +220,8 @@
   function rebuildBase(){
     if (baseMesh){ scene.remove(baseMesh); baseMesh.geometry.dispose(); }
     let geom;
-    if (state.uploadedMesh){
-      geom = state.uploadedMesh.clone();
+    if (state.uploadedGeom){
+      geom = state.uploadedGeom.clone();
     } else {
       if (state.template==='cup') geom = buildCup(state.size);
       else if (state.template==='vase') geom = buildVase(state.size);
@@ -238,39 +229,32 @@
     }
     const deformed = applyWave(geom, state.wave);
     baseMesh = new THREE.Mesh(deformed, baseMat);
-    baseMesh.castShadow = baseMesh.receiveShadow = true;
     scene.add(baseMesh);
-
-    // 既存デカールを再作成
-    // （省略：必要ならここでd.meshを再生成）
-
     deformed.computeBoundingBox();
     updateStats(deformed);
   }
 
   function applyDecal(d){
     if (!baseMesh) return;
-    const geom = new DecalGeometry(baseMesh, d.position, d.rotation, d.size);
+    const geom = new THREE.DecalGeometry(baseMesh, d.position, d.rotation, d.size);
     const mat = new THREE.MeshStandardMaterial({ map: d.map, transparent:true, roughness:0.5, metalness:0, polygonOffset:true, polygonOffsetFactor:-1 });
     const mesh = new THREE.Mesh(geom, mat); mesh.renderOrder = 10;
     d.mesh = mesh; scene.add(mesh);
   }
 
-  // --- UI bindings
   document.getElementById('tpl').addEventListener('click', (e)=>{
     if (e.target.tagName!=='BUTTON') return;
     [...e.currentTarget.children].forEach(b=>b.classList.remove('active'));
     e.target.classList.add('active');
     state.template = e.target.dataset.k;
-    state.uploadedMesh = null;
+    state.uploadedGeom = null;
     if (state.template==='plate') { el('rt').value = 0.09; state.size.rt=0.09; }
     rebuildBase();
   });
 
   ['h','rt','rb'].forEach(id=>{
-    el(id).addEventListener('input', ()=>{ state.size[id] = parseFloat(el(id).value); if (!state.uploadedMesh) rebuildBase(); });
+    el(id).addEventListener('input', ()=>{ state.size[id] = parseFloat(el(id).value); if (!state.uploadedGeom) rebuildBase(); });
   });
-
   ['amp','freq'].forEach(id=>{
     el(id).addEventListener('input', ()=>{ state.wave[id] = parseFloat(el(id).value); rebuildBase(); });
   });
@@ -284,9 +268,9 @@
     const tex = new THREE.TextureLoader().load(url, t=>{ t.needsUpdate=true; });
     const d = {
       map: tex,
-      position: new THREE.Vector3(parseFloat(el('dx').value), parseFloat(el('dy').value), parseFloat(el('dz').value)),
-      rotation: new THREE.Euler(parseFloat(el('dpitch').value), parseFloat(el('dyaw').value), parseFloat(el('droll').value)),
-      size: new THREE.Vector3(parseFloat(el('dw').value), parseFloat(el('dh').value), parseFloat(el('dd').value)),
+      position: new THREE.Vector3(parseFloat(el('dx')?.value||0), parseFloat(el('dy')?.value||0.03), parseFloat(el('dz')?.value||0.06)),
+      rotation: new THREE.Euler(parseFloat(el('dpitch')?.value||0), parseFloat(el('dyaw')?.value||0), parseFloat(el('droll')?.value||0)),
+      size: new THREE.Vector3(parseFloat(el('dw')?.value||0.06), parseFloat(el('dh')?.value||0.06), parseFloat(el('dd')?.value||0.02)),
       mesh: null
     };
     state.decals.push(d); applyDecal(d);
@@ -295,21 +279,21 @@
   el('glbFile').addEventListener('change', (ev)=>{
     const f = ev.target.files?.[0]; if (!f) return;
     const url = URL.createObjectURL(f);
-    const loader = new GLTFLoader();
+    const loader = new THREE.GLTFLoader();
     loader.load(url, (gltf)=>{
       let mesh = null;
-      gltf.scene.traverse((o)=>{ if ((o.isMesh || o.type==='Mesh') && !mesh) mesh = o; });
+      gltf.scene.traverse(o=>{ if ((o.isMesh || o.type==='Mesh') && !mesh) mesh = o; });
       if (!mesh){ alert('メッシュが見つかりませんでした'); return; }
       mesh.updateWorldMatrix(true, true);
       const geom = mesh.geometry.clone();
       geom.applyMatrix4(mesh.matrixWorld);
-      state.uploadedMesh = geom;
+      state.uploadedGeom = geom;
       rebuildBase();
     }, undefined, (err)=>{ console.error(err); alert('読み込みに失敗しました'); });
   });
 
-  document.getElementById('export')?.addEventListener('click', ()=>{
-    const exporter = new STLExporter();
+  document.getElementById('export').addEventListener('click', ()=>{
+    const exporter = new THREE.STLExporter();
     const stl = exporter.parse(baseMesh);
     const blob = new Blob([stl], { type: 'application/sla' });
     const a = document.createElement('a');
@@ -318,11 +302,9 @@
     a.click();
   });
 
-  // 初期メッシュ生成
   rebuildBase();
-
-  // render loop
   renderer.setAnimationLoop(()=>{ controls.update(); renderer.render(scene, camera); });
 </script>
 </body>
 </html>
+
